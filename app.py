@@ -71,8 +71,8 @@ def compute_matrices(wa, wt, wv, tim, threshold, var_thresh):
 
             grade_a = GRADE_LABEL[val_a]
             grade_b = GRADE_LABEL[val_b]
-            row_a.append(f'a={att}, v={var}<br>S={s} → {grade_a} ({ru})')
-            row_b.append(f'a={att}, v={var}<br>S={s} → {grade_b} ({ru})')
+            row_a.append(f'M_посещ={att}, M_вар={var}<br>G_итог={s} → {grade_a} ({ru})')
+            row_b.append(f'M_посещ={att}, M_вар={var}<br>G_итог={s} → {grade_b} ({ru})')
 
             if rule_a(s, threshold) and not rule_b(s, var, threshold, var_thresh):
                 diff_pts['x'].append(var)
@@ -95,8 +95,8 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
     fig = make_subplots(
         rows=1, cols=2,
         subplot_titles=[
-            f'Правило A:  S ≥ θ={threshold}',
-            f'Правило B:  S ≥ θ={threshold}  ∧  v ≥ v₀={var_thresh}',
+            f'Правило A:  G_итог ≥ θ={threshold}',
+            f'Правило B:  G_итог ≥ θ={threshold}  ∧  M_вар ≥ v₀={var_thresh}',
         ],
         horizontal_spacing=0.10,
     )
@@ -123,7 +123,7 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
             mode='markers',
             marker=dict(symbol='circle', color='#c0392b', size=4, opacity=0.50),
             name=f'A≠B  ({n_diff} ячеек, {pct_diff:.1f}%)',
-            hovertemplate='a=%{y}, v=%{x}<extra>A≠B</extra>',
+            hovertemplate='M_посещ=%{y}, M_вар=%{x}<extra>A≠B</extra>',
         ), row=1, col=2)
 
     for col in (1, 2):
@@ -146,13 +146,13 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
             name=label, showlegend=True,
         ))
 
-    fig.update_xaxes(title_text='v — вариативный балл', range=[0, 100], showgrid=False)
-    fig.update_yaxes(title_text='a — посещаемость', range=[0, 100], showgrid=False)
+    fig.update_xaxes(title_text='M_вар — вариативный балл', range=[0, 100], showgrid=False)
+    fig.update_yaxes(title_text='M_посещ — посещаемость', range=[0, 100], showgrid=False)
     fig.update_layout(
         height=580,
         title=dict(
-            text=(f'α={w_att_pct}%  β={wt_pct}%  γ={w_var_pct}%'
-                  f'  ·  t={tim}  ·  θ={threshold}  ·  v₀={var_thresh}'),
+            text=(f'w_посещ={w_att_pct}%  w_своевр={wt_pct}%  w_вар={w_var_pct}%'
+                  f'  ·  M_своевр={tim}  ·  θ={threshold}  ·  v₀={var_thresh}'),
             font=dict(size=13, color='#555'),
             x=0.0,
             xanchor='left',
@@ -183,29 +183,32 @@ with st.sidebar:
     st.header('Параметры')
 
     tim = st.selectbox(
-        't — своевременность аттестации',
+        'M_своевр — своевременность аттестации',
         options=[100, 50, 0],
         format_func=lambda v: {
-            100: 't = 100 (основной срок)',
-            50:  't = 50  (1-я пересдача)',
-            0:   't = 0   (2-я пересдача)',
+            100: 'M_своевр = 100 (основной срок)',
+            50:  'M_своевр = 50  (1-я пересдача)',
+            0:   'M_своевр = 0   (2-я пересдача)',
         }[v],
     )
 
     st.subheader('Веса компонентов')
-    w_att_pct = st.slider('α — посещаемость (%)', 0, 80, 20, step=5)
-    w_var_pct = st.slider('γ — вариативный (%)',  20, 100, 60, step=5)
+    w_att_pct = st.slider('w_посещ — посещаемость (%)', 0, 80, 20, step=5)
+    w_var_pct = st.slider('w_вар — вариативный (%)',    20, 100, 60, step=5)
     wt_pct = 100 - w_att_pct - w_var_pct
 
     if wt_pct < 0:
-        st.error(f'α + β + γ > 100 %:  β = {wt_pct} %. Уменьшите веса.')
+        st.error(f'w_посещ + w_своевр + w_вар > 100 %:  w_своевр = {wt_pct} %. Уменьшите веса.')
         st.stop()
     else:
-        st.info(f'α = {w_att_pct} %  ·  β = {wt_pct} %  ·  γ = {w_var_pct} %  →  сумма = 100 %')
+        st.info(
+            f'w_посещ = {w_att_pct} %  ·  w_своевр = {wt_pct} %  ·  w_вар = {w_var_pct} %'
+            f'  →  сумма = 100 %'
+        )
 
     st.subheader('Пороги')
-    threshold = st.slider('θ — порог зачёта (S ≥)', 20, 60, 42, step=1)
-    var_thresh = st.slider('v₀ — порог правила B (v ≥)', 10, 60, 42, step=1)
+    threshold = st.slider('θ — порог зачёта (G_итог ≥)', 20, 60, 42, step=1)
+    var_thresh = st.slider('v₀ — порог правила B (M_вар ≥)', 10, 60, 42, step=1)
 
 wa = w_att_pct / 100
 wt = wt_pct / 100
@@ -225,12 +228,15 @@ fig = build_figure(
 st.plotly_chart(fig, use_container_width=True)
 
 # ── Статистика расхождений ────────────────────────────────────────────────────
-st.subheader(f'Расхождения A ≠ B при t = {tim}')
+st.subheader(f'Расхождения A ≠ B при M_своевр = {tim}')
 col1, col2, col3 = st.columns(3)
 col1.metric('Расхождений', f'{n_diff}')
 col2.metric('Всего ячеек', f'{n_total}')
 col3.metric('Доля', f'{pct_diff:.1f} %')
-st.caption(f'Студент проходит по правилу A (S ≥ θ={threshold}), но не по B (v < v₀={var_thresh})')
+st.caption(
+    f'Студент проходит по правилу A (G_итог ≥ θ={threshold}), '
+    f'но не по B (M_вар < v₀={var_thresh})'
+)
 
 # ── Потери по оценкам ─────────────────────────────────────────────────────────
 lost_by_grade = {e: 0 for e in 'ABCDE'}
@@ -248,46 +254,58 @@ if losses:
 
 # ── Формулы ───────────────────────────────────────────────────────────────────
 with st.expander('Формулы системы оценивания', expanded=False):
-    st.markdown('#### Итоговая оценка (взвешенная сумма)')
+    st.markdown('#### Итоговая оценка — формула взвешенной суммы')
     st.latex(r'''
         G_{\text{итог}} = \mathrm{round}\!\left(\sum_{i=1}^{n} w_i \cdot M_i\right),
         \qquad \sum_{i=1}^{n} w_i = 1
     ''')
     st.markdown(
-        r'$G_{\text{итог}}$ — итоговая оценка (округлённая);  '
-        r'$M_i$ — балл за $i$-й компонент (0–100);  '
-        r'$w_i$ — вес компонента.'
+        r'$G_{\text{итог}}$ — итоговая оценка, округлённая до целого;  '
+        r'$M_i$ — оценка за $i$-й компонент контроля (0–100);  '
+        r'$w_i$ — вес $i$-го компонента контроля.'
     )
 
     st.divider()
-    st.markdown('#### Академическая активность  (фиксированный вес **α = 20 %**)')
+    st.markdown('#### Академическая активность  (фиксированный вес **0.4 = 40 %**)')
 
-    st.markdown('**Посещаемость** (вес 20 %)')
+    st.markdown('**Посещаемость** — $w_{\\text{посещаемость}} = 20\\%$')
     st.latex(r'''
-        M_{\text{посещ}} = \frac{n_{\text{посещено}}}{n_{\text{занятий}}} \times 100
+        M_{\text{посещаемость}} = \frac{n_{\text{посещено}}}{n_{\text{занятий}}} \times 100
     ''')
+    st.markdown(
+        r'$n_{\text{посещено}}$ — количество посещённых студентом занятий;  '
+        r'$n_{\text{занятий}}$ — общее число занятий по курсу.'
+    )
 
-    st.markdown('**Своевременность аттестации** (вес 20 %)')
+    st.markdown('**Своевременность аттестации** — $w_{\\text{своевременность}} = 20\\%$')
     st.latex(r'''
-        M_{\text{своевр}} = \begin{cases}
-            100, & \text{основной срок} \\
-            50,  & \text{первая пересдача} \\
-            0,   & \text{вторая пересдача}
+        M_{\text{своевременность}} = \begin{cases}
+            100, & \text{промежуточная аттестация пройдена в основной срок} \\
+            50,  & \text{в первую пересдачу} \\
+            0,   & \text{во вторую пересдачу}
         \end{cases}
     ''')
 
     st.divider()
-    st.markdown('#### Итоговый балл в данной модели')
-    st.latex(r'S = \alpha \cdot a + \beta \cdot t + \gamma \cdot v')
+    st.markdown('#### Вариативная часть  (совокупный вес **0.6 = 60 %**)')
     st.markdown(
-        r'$a$ — посещаемость,  $t$ — своевременность,  $v$ — вариативный балл;  '
-        r'$\alpha + \beta + \gamma = 1$.'
+        'Состав, количество компонентов и их веса определяются преподавателем и/или школой.'
     )
+
+    st.divider()
+    st.markdown('#### Итоговый балл в данной модели')
+    st.latex(r'''
+        G_{\text{итог}} = \mathrm{round}\!\bigl(
+            w_{\text{посещаемость}} \cdot M_{\text{посещаемость}}
+            + w_{\text{своевременность}} \cdot M_{\text{своевременность}}
+            + w_{\text{вар}} \cdot M_{\text{вар}}
+        \bigr)
+    ''')
 
     st.divider()
     st.markdown('#### Правила зачёта')
     st.latex(
-        r'\text{Правило A:}\quad S \geq \theta'
+        r'\text{Правило A:}\quad G_{\text{итог}} \geq \theta'
         r'\qquad\qquad'
-        r'\text{Правило B:}\quad S \geq \theta \;\wedge\; v \geq v_0'
+        r'\text{Правило B:}\quad G_{\text{итог}} \geq \theta \;\wedge\; M_{\text{вар}} \geq v_0'
     )
