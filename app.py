@@ -176,8 +176,8 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
 
 # ── Streamlit UI ──────────────────────────────────────────────────────────────
 
-st.set_page_config(page_title='Анализ системы оценивания', layout='wide')
-st.title('Анализ системы оценивания: Правило A vs Правило B')
+st.set_page_config(page_title='Система оценивания', layout='wide')
+st.title('Система оценивания: A / B test')
 
 with st.sidebar:
     st.header('Параметры')
