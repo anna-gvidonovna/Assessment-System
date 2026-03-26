@@ -89,16 +89,16 @@ def compute_matrices(wa, wt, wv, tim, threshold, var_thresh):
 
 
 def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
-                 diff_pts, threshold, var_thresh, n_diff, n_total, pct_diff,
+                 diff_pts, threshold, var_thresh, n_diff, pct_diff,
                  w_att_pct, wt_pct, w_var_pct, tim):
 
     fig = make_subplots(
         rows=1, cols=2,
         subplot_titles=[
-            f'Правило A:  S \u2265 \u03b8={threshold}   (\u03b1={w_att_pct}%, \u03b2={wt_pct}%, \u03b3={w_var_pct}%)',
-            f'Правило B:  S \u2265 \u03b8={threshold}  \u2227  v \u2265 v\u2080={var_thresh}   \u2014  расхождений: {n_diff}/{n_total} ({pct_diff:.1f}%)',
+            f'Правило A:  S ≥ θ={threshold}',
+            f'Правило B:  S ≥ θ={threshold}  ∧  v ≥ v₀={var_thresh}',
         ],
-        horizontal_spacing=0.08,
+        horizontal_spacing=0.10,
     )
 
     common = dict(
@@ -110,20 +110,20 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
     )
 
     fig.add_trace(go.Heatmap(
-        z=mat_a, hovertext=hover_a, name='Правило A', **common
+        z=mat_a, hovertext=hover_a, name='Правило A', showlegend=False, **common
     ), row=1, col=1)
 
     fig.add_trace(go.Heatmap(
-        z=mat_b, hovertext=hover_b, name='Правило B', **common
+        z=mat_b, hovertext=hover_b, name='Правило B', showlegend=False, **common
     ), row=1, col=2)
 
     if diff_pts['x']:
         fig.add_trace(go.Scatter(
             x=diff_pts['x'], y=diff_pts['y'],
             mode='markers',
-            marker=dict(symbol='circle', color='#c0392b', size=4, opacity=0.45),
-            name=f'A\u2260B ({n_diff})',
-            hovertemplate='a=%{y}, v=%{x}<extra>A\u2260B</extra>',
+            marker=dict(symbol='circle', color='#c0392b', size=4, opacity=0.50),
+            name=f'A≠B  ({n_diff} ячеек, {pct_diff:.1f}%)',
+            hovertemplate='a=%{y}, v=%{x}<extra>A≠B</extra>',
         ), row=1, col=2)
 
     for col in (1, 2):
@@ -131,32 +131,45 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
                       line_width=2, col=col, row=1)
 
     grade_legend = [
-        ('A — 5 Отл (92–100)', COLORS_MAP[5]),
-        ('B — 5 Отл (82–91)',  COLORS_MAP[4]),
-        ('C — 4 Хор (62–81)',  COLORS_MAP[3]),
+        ('A — 5 Отл  (92–100)', COLORS_MAP[5]),
+        ('B — 5 Отл  (82–91)',  COLORS_MAP[4]),
+        ('C — 4 Хор  (62–81)',  COLORS_MAP[3]),
         ('D — 3 Удов (52–61)', COLORS_MAP[2]),
         ('E — 3 Удов (42–51)', COLORS_MAP[1]),
-        ('F — 2 Неуд (0–41)',  COLORS_MAP[0]),
+        ('F — 2 Неуд (0–41)',   COLORS_MAP[0]),
     ]
     for label, color in grade_legend:
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode='markers',
-            marker=dict(size=12, color=color, symbol='square',
-                        line=dict(color='#aaa', width=1)),
+            marker=dict(size=14, color=color, symbol='square',
+                        line=dict(color='#888', width=1)),
             name=label, showlegend=True,
         ))
 
-    fig.update_xaxes(title_text='v (вариативный)', range=[0, 100])
-    fig.update_yaxes(title_text='a (посещаемость)', range=[0, 100])
+    fig.update_xaxes(title_text='v — вариативный балл', range=[0, 100], showgrid=False)
+    fig.update_yaxes(title_text='a — посещаемость', range=[0, 100], showgrid=False)
     fig.update_layout(
-        height=560,
+        height=580,
         title=dict(
-            text=(f't={tim}  \u00b7  \u03b1={w_att_pct}%  \u03b2={wt_pct}%  \u03b3={w_var_pct}%'
-                  f'  \u00b7  \u03b8={threshold}'),
-            font=dict(size=13),
+            text=(f'α={w_att_pct}%  β={wt_pct}%  γ={w_var_pct}%'
+                  f'  ·  t={tim}  ·  θ={threshold}  ·  v₀={var_thresh}'),
+            font=dict(size=13, color='#555'),
+            x=0.0,
+            xanchor='left',
         ),
-        legend=dict(orientation='h', yanchor='top', y=-0.12, xanchor='center', x=0.5),
-        margin=dict(b=120),
+        legend=dict(
+            orientation='v',
+            yanchor='middle', y=0.5,
+            xanchor='left',   x=1.02,
+            bgcolor='rgba(255,255,255,0.85)',
+            bordercolor='#ccc',
+            borderwidth=1,
+            font=dict(size=12),
+            tracegroupgap=4,
+        ),
+        margin=dict(l=60, r=200, t=80, b=60),
+        plot_bgcolor='#fafafa',
+        paper_bgcolor='#ffffff',
     )
     return fig
 
@@ -166,42 +179,33 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
 st.set_page_config(page_title='Анализ системы оценивания', layout='wide')
 st.title('Анализ системы оценивания: Правило A vs Правило B')
 
-# Формула
-with st.expander('Формула оценки', expanded=True):
-    st.latex(r'S = \alpha \cdot a + \beta \cdot t + \gamma \cdot v')
-    st.latex(
-        r'\text{Правило A}: S \geq \theta'
-        r'\qquad\qquad'
-        r'\text{Правило B}: S \geq \theta \;\wedge\; v \geq v_0'
-    )
-    st.markdown(
-        r'где $a$ — посещаемость, $t$ — своевременность (фиксирована), $v$ — вариативный балл; '
-        r'$\alpha, \beta, \gamma$ — их веса; $\theta$ — порог зачёта; $v_0$ — порог по правилу B.'
-    )
-
 with st.sidebar:
     st.header('Параметры')
 
     tim = st.selectbox(
-        't (своевременность)',
+        't — своевременность аттестации',
         options=[100, 50, 0],
-        format_func=lambda v: {100: 't = 100 (основной срок)', 50: 't = 50 (1-я пересдача)', 0: 't = 0 (2-я пересдача)'}[v],
+        format_func=lambda v: {
+            100: 't = 100 (основной срок)',
+            50:  't = 50  (1-я пересдача)',
+            0:   't = 0   (2-я пересдача)',
+        }[v],
     )
 
-    st.subheader('Веса')
-    w_att_pct = st.slider('α — вес посещаемости (%)', 0, 80, 20, step=5)
-    w_var_pct = st.slider('γ — вес вариативного (%)', 20, 100, 60, step=5)
+    st.subheader('Веса компонентов')
+    w_att_pct = st.slider('α — посещаемость (%)', 0, 80, 20, step=5)
+    w_var_pct = st.slider('γ — вариативный (%)',  20, 100, 60, step=5)
     wt_pct = 100 - w_att_pct - w_var_pct
 
     if wt_pct < 0:
-        st.error(f'α + β + γ > 100%: β = {wt_pct}%. Уменьшите веса.')
+        st.error(f'α + β + γ > 100 %:  β = {wt_pct} %. Уменьшите веса.')
         st.stop()
     else:
-        st.success(f'α={w_att_pct}%  β={wt_pct}%  γ={w_var_pct}%  (сумма = 100%)')
+        st.info(f'α = {w_att_pct} %  ·  β = {wt_pct} %  ·  γ = {w_var_pct} %  →  сумма = 100 %')
 
     st.subheader('Пороги')
-    threshold = st.slider('θ — порог зачёта (≥)', 20, 60, 42, step=1)
-    var_thresh = st.slider('v₀ — порог правила B (≥)', 10, 60, 42, step=1)
+    threshold = st.slider('θ — порог зачёта (S ≥)', 20, 60, 42, step=1)
+    var_thresh = st.slider('v₀ — порог правила B (v ≥)', 10, 60, 42, step=1)
 
 wa = w_att_pct / 100
 wt = wt_pct / 100
@@ -213,23 +217,22 @@ att_vals, var_vals, mat_a, mat_b, hover_a, hover_b, diff_pts, n_diff, n_total, p
 
 fig = build_figure(
     att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
-    diff_pts, threshold, var_thresh, n_diff, n_total, pct_diff,
+    diff_pts, threshold, var_thresh, n_diff, pct_diff,
     w_att_pct, wt_pct, w_var_pct, tim
 )
+
+# ── Графики — первыми ─────────────────────────────────────────────────────────
 st.plotly_chart(fig, use_container_width=True)
 
-# Statistics
-st.subheader(f'Расхождения A \u2260 B при t = {tim}')
+# ── Статистика расхождений ────────────────────────────────────────────────────
+st.subheader(f'Расхождения A ≠ B при t = {tim}')
 col1, col2, col3 = st.columns(3)
 col1.metric('Расхождений', f'{n_diff}')
 col2.metric('Всего ячеек', f'{n_total}')
-col3.metric('Доля', f'{pct_diff:.1f}%')
+col3.metric('Доля', f'{pct_diff:.1f} %')
+st.caption(f'Студент проходит по правилу A (S ≥ θ={threshold}), но не по B (v < v₀={var_thresh})')
 
-st.caption(
-    f'Студент проходит по A (S \u2265 \u03b8={threshold}), но не по B (v < v\u2080={var_thresh})'
-)
-
-# Per-grade loss
+# ── Потери по оценкам ─────────────────────────────────────────────────────────
 lost_by_grade = {e: 0 for e in 'ABCDE'}
 for i, att in enumerate(att_vals):
     for j, var in enumerate(var_vals):
@@ -242,3 +245,49 @@ losses = {e: cnt for e, cnt in lost_by_grade.items() if cnt > 0}
 if losses:
     st.write('**Потери по оценкам** (проходит по A, теряет по B):')
     st.table({'Оценка ECTS': list(losses.keys()), 'Ячеек': list(losses.values())})
+
+# ── Формулы ───────────────────────────────────────────────────────────────────
+with st.expander('Формулы системы оценивания', expanded=False):
+    st.markdown('#### Итоговая оценка (взвешенная сумма)')
+    st.latex(r'''
+        G_{\text{итог}} = \mathrm{round}\!\left(\sum_{i=1}^{n} w_i \cdot M_i\right),
+        \qquad \sum_{i=1}^{n} w_i = 1
+    ''')
+    st.markdown(
+        r'$G_{\text{итог}}$ — итоговая оценка (округлённая);  '
+        r'$M_i$ — балл за $i$-й компонент (0–100);  '
+        r'$w_i$ — вес компонента.'
+    )
+
+    st.divider()
+    st.markdown('#### Академическая активность  (фиксированный вес **α = 20 %**)')
+
+    st.markdown('**Посещаемость** (вес 20 %)')
+    st.latex(r'''
+        M_{\text{посещ}} = \frac{n_{\text{посещено}}}{n_{\text{занятий}}} \times 100
+    ''')
+
+    st.markdown('**Своевременность аттестации** (вес 20 %)')
+    st.latex(r'''
+        M_{\text{своевр}} = \begin{cases}
+            100, & \text{основной срок} \\
+            50,  & \text{первая пересдача} \\
+            0,   & \text{вторая пересдача}
+        \end{cases}
+    ''')
+
+    st.divider()
+    st.markdown('#### Итоговый балл в данной модели')
+    st.latex(r'S = \alpha \cdot a + \beta \cdot t + \gamma \cdot v')
+    st.markdown(
+        r'$a$ — посещаемость,  $t$ — своевременность,  $v$ — вариативный балл;  '
+        r'$\alpha + \beta + \gamma = 1$.'
+    )
+
+    st.divider()
+    st.markdown('#### Правила зачёта')
+    st.latex(
+        r'\text{Правило A:}\quad S \geq \theta'
+        r'\qquad\qquad'
+        r'\text{Правило B:}\quad S \geq \theta \;\wedge\; v \geq v_0'
+    )
