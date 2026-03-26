@@ -1,8 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.colors import ListedColormap
 import streamlit as st
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # ── Шкала оценок ─────────────────────────────────────────────────────────────
 GRADE_SCALE = [
@@ -15,18 +14,17 @@ GRADE_SCALE = [
 ]
 
 COLORS_MAP = ['#f8cecc', '#ffe8a0', '#fff2cc', '#dae8fc', '#b8daf5', '#d8f3dc']
-CMAP = ListedColormap(COLORS_MAP)
 GRADE_NUM = {'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1, 'F': 0}
+GRADE_LABEL = {v: k for k, v in GRADE_NUM.items()}
 
-PRESETS = {
-    '20+20+60 (стандарт)': (20, 20, 60),
-    '15+15+70': (15, 15, 70),
-    '10+10+80': (10, 10, 80),
-    '25+25+50': (25, 25, 50),
-    '30+30+40 (мин. вариат.)': (30, 30, 40),
-    '10+30+60': (10, 30, 60),
-    '0+40+60 (без посещ.)': (0, 40, 60),
-}
+GRADE_COLORSCALE = [
+    [0/6, '#f8cecc'], [1/6, '#f8cecc'],
+    [1/6, '#ffe8a0'], [2/6, '#ffe8a0'],
+    [2/6, '#fff2cc'], [3/6, '#fff2cc'],
+    [3/6, '#dae8fc'], [4/6, '#dae8fc'],
+    [4/6, '#b8daf5'], [5/6, '#b8daf5'],
+    [5/6, '#d8f3dc'], [6/6, '#d8f3dc'],
+]
 
 
 def get_grade(s):
@@ -49,81 +47,119 @@ def rule_b(s, var, threshold, var_threshold):
     return s >= threshold and var >= var_threshold
 
 
-def build_figure(wa, wt, wv, tim, threshold, var_thresh, w_att_pct, wt_pct, w_var_pct):
+def compute_matrices(wa, wt, wv, tim, threshold, var_thresh):
     att_vals = np.arange(0, 101, 2)
     var_vals = np.arange(0, 101, 2)
 
     mat_a = np.zeros((len(att_vals), len(var_vals)))
     mat_b = np.zeros((len(att_vals), len(var_vals)))
+    hover_a = []
+    hover_b = []
     diff_pts = {'x': [], 'y': []}
 
     for i, att in enumerate(att_vals):
+        row_a, row_b = [], []
         for j, var in enumerate(var_vals):
             s = calc_score(att, tim, var, wa, wt, wv)
-            ects, *_ = get_grade(s)
+            ects, ru, *_ = get_grade(s)
             gn = GRADE_NUM[ects]
-            mat_a[i, j] = gn if rule_a(s, threshold) else 0
-            mat_b[i, j] = gn if rule_b(s, var, threshold, var_thresh) else 0
+
+            val_a = gn if rule_a(s, threshold) else 0
+            val_b = gn if rule_b(s, var, threshold, var_thresh) else 0
+            mat_a[i, j] = val_a
+            mat_b[i, j] = val_b
+
+            grade_a = GRADE_LABEL[val_a]
+            grade_b = GRADE_LABEL[val_b]
+            row_a.append(f'Посещ: {att} | Вариат: {var}<br>Итог: {s} | Оценка: {grade_a} ({ru})')
+            row_b.append(f'Посещ: {att} | Вариат: {var}<br>Итог: {s} | Оценка: {grade_b} ({ru})')
+
             if rule_a(s, threshold) and not rule_b(s, var, threshold, var_thresh):
                 diff_pts['x'].append(var)
                 diff_pts['y'].append(att)
+
+        hover_a.append(row_a)
+        hover_b.append(row_b)
 
     n_diff = len(diff_pts['x'])
     n_total = len(att_vals) * len(var_vals)
     pct_diff = 100 * n_diff / n_total
 
-    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
-    ext = [-1, 101, -1, 101]
+    return att_vals, var_vals, mat_a, mat_b, hover_a, hover_b, diff_pts, n_diff, n_total, pct_diff
 
-    titles = [
-        f'Правило A  (итог ≥ {threshold})\nПосещ={w_att_pct}% · Своевр={wt_pct}% · Вариат={w_var_pct}%',
-        f'Правило B  (итог ≥ {threshold}  И  вариат ≥ {var_thresh})\nРасхождений: {n_diff}/{n_total} ({pct_diff:.1f}%)',
-    ]
 
-    for ax, mat, title in zip(axes, [mat_a, mat_b], titles):
-        ax.imshow(mat, origin='lower', aspect='auto',
-                  cmap=CMAP, vmin=0, vmax=5, extent=ext, interpolation='nearest')
-        try:
-            ax.contour(var_vals, att_vals, mat,
-                       levels=[0.5, 1.5, 2.5, 3.5, 4.5],
-                       colors=['#c0392b', '#e07b00', '#1d6fa4', '#40916c', '#2d6a4f'],
-                       linewidths=1.2, alpha=0.6)
-        except Exception:
-            pass
+def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
+                 diff_pts, threshold, var_thresh, n_diff, n_total, pct_diff,
+                 w_att_pct, wt_pct, w_var_pct, tim):
 
-        ax.axvline(var_thresh, color='white', linestyle='--', linewidth=2, alpha=0.8)
-        ax.text(var_thresh + 1, 97, f'вар={var_thresh}', color='white',
-                fontsize=8.5, va='top', fontweight='bold')
-        ax.set_xlabel('Вариативный балл', fontsize=11)
-        ax.set_ylabel('Посещаемость', fontsize=11)
-        ax.set_title(title, fontweight='bold', fontsize=10.5)
-        ax.set_xlim(0, 100)
-        ax.set_ylim(0, 100)
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=[
+            f'Правило A  (итог ≥ {threshold})   Посещ={w_att_pct}% · Своевр={wt_pct}% · Вариат={w_var_pct}%',
+            f'Правило B  (итог ≥ {threshold}  И  вариат ≥ {var_thresh})   Расхождений: {n_diff}/{n_total} ({pct_diff:.1f}%)',
+        ],
+        horizontal_spacing=0.08,
+    )
+
+    common = dict(
+        x=var_vals, y=att_vals,
+        colorscale=GRADE_COLORSCALE,
+        zmin=-0.5, zmax=5.5,
+        showscale=False,
+        hovertemplate='%{hovertext}<extra></extra>',
+    )
+
+    fig.add_trace(go.Heatmap(
+        z=mat_a, hovertext=hover_a, name='Правило A', **common
+    ), row=1, col=1)
+
+    fig.add_trace(go.Heatmap(
+        z=mat_b, hovertext=hover_b, name='Правило B', **common
+    ), row=1, col=2)
 
     if diff_pts['x']:
-        axes[1].scatter(diff_pts['x'], diff_pts['y'],
-                        marker='x', color='#c0392b', s=18,
-                        linewidths=1.2, label=f'A≠B ({n_diff} точек)', zorder=5, alpha=0.7)
-        axes[1].legend(fontsize=9, loc='lower right')
+        fig.add_trace(go.Scatter(
+            x=diff_pts['x'], y=diff_pts['y'],
+            mode='markers',
+            marker=dict(symbol='x', color='#c0392b', size=5, line=dict(width=1.5)),
+            name=f'A≠B ({n_diff} точек)',
+            hovertemplate='Посещ: %{y} | Вариат: %{x}<extra>A≠B</extra>',
+        ), row=1, col=2)
 
-    patches = [
-        mpatches.Patch(facecolor=COLORS_MAP[5], edgecolor='#aaa', lw=0.5, label='A — 5 Отл (92–100)'),
-        mpatches.Patch(facecolor=COLORS_MAP[4], edgecolor='#aaa', lw=0.5, label='B — 5 Отл (82–91)'),
-        mpatches.Patch(facecolor=COLORS_MAP[3], edgecolor='#aaa', lw=0.5, label='C — 4 Хор (62–81)'),
-        mpatches.Patch(facecolor=COLORS_MAP[2], edgecolor='#aaa', lw=0.5, label='D — 3 Удов (52–61)'),
-        mpatches.Patch(facecolor=COLORS_MAP[1], edgecolor='#aaa', lw=0.5, label='E — 3 Удов (42–51)'),
-        mpatches.Patch(facecolor=COLORS_MAP[0], edgecolor='#aaa', lw=0.5, label='F — 2 Неуд (0–41)'),
+    # Вертикальная линия порога вариативного
+    for col in (1, 2):
+        fig.add_vline(x=var_thresh, line_dash='dash', line_color='white',
+                      line_width=2, col=col, row=1)
+
+    # Легенда оценок — цветные маркеры
+    grade_legend = [
+        ('A — 5 Отл (92–100)', COLORS_MAP[5]),
+        ('B — 5 Отл (82–91)',  COLORS_MAP[4]),
+        ('C — 4 Хор (62–81)',  COLORS_MAP[3]),
+        ('D — 3 Удов (52–61)', COLORS_MAP[2]),
+        ('E — 3 Удов (42–51)', COLORS_MAP[1]),
+        ('F — 2 Неуд (0–41)',  COLORS_MAP[0]),
     ]
-    fig.legend(handles=patches, loc='lower center', ncol=6,
-               fontsize=9, bbox_to_anchor=(0.5, -0.04))
+    for label, color in grade_legend:
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode='markers',
+            marker=dict(size=12, color=color, symbol='square',
+                        line=dict(color='#aaa', width=1)),
+            name=label, showlegend=True,
+        ))
 
-    plt.suptitle(
-        f'Своевр={tim}  ·  Веса: посещ={w_att_pct}% своевр={wt_pct}% вариат={w_var_pct}%'
-        f'  ·  Порог зачёта={threshold}',
-        fontsize=11, fontweight='bold', y=1.01
+    fig.update_xaxes(title_text='Вариативный балл', range=[0, 100])
+    fig.update_yaxes(title_text='Посещаемость', range=[0, 100])
+    fig.update_layout(
+        height=560,
+        title=dict(
+            text=f'Своевр={tim}  ·  Веса: посещ={w_att_pct}% своевр={wt_pct}% вариат={w_var_pct}%  ·  Порог зачёта={threshold}',
+            font=dict(size=13),
+        ),
+        legend=dict(orientation='h', yanchor='top', y=-0.12, xanchor='center', x=0.5),
+        margin=dict(b=120),
     )
-    plt.tight_layout()
-    return fig, n_diff, n_total, pct_diff, diff_pts, att_vals, var_vals
+    return fig
 
 
 # ── Streamlit UI ──────────────────────────────────────────────────────────────
@@ -131,12 +167,8 @@ def build_figure(wa, wt, wv, tim, threshold, var_thresh, w_att_pct, wt_pct, w_va
 st.set_page_config(page_title='Анализ системы оценивания', layout='wide')
 st.title('Анализ системы оценивания: A vs B · Тепловые карты')
 
-# Sidebar controls
 with st.sidebar:
     st.header('Параметры')
-
-    preset_name = st.selectbox('Пресет весов', list(PRESETS.keys()), index=0)
-    preset_wa, preset_wt, preset_wv = PRESETS[preset_name]
 
     tim = st.selectbox(
         'Своевременность',
@@ -145,8 +177,8 @@ with st.sidebar:
     )
 
     st.subheader('Веса компонентов')
-    w_att_pct = st.slider('Вес посещаемости (%)', 0, 80, preset_wa, step=5)
-    w_var_pct = st.slider('Вес вариативного (%)', 20, 100, preset_wv, step=5)
+    w_att_pct = st.slider('Вес посещаемости (%)', 0, 80, 20, step=5)
+    w_var_pct = st.slider('Вес вариативного (%)', 20, 100, 60, step=5)
     wt_pct = 100 - w_att_pct - w_var_pct
 
     if wt_pct < 0:
@@ -159,16 +191,20 @@ with st.sidebar:
     threshold = st.slider('Порог зачёта (≥)', 20, 60, 42, step=1)
     var_thresh = st.slider('Порог вариативного B (≥)', 10, 60, 42, step=1)
 
-# Build and display
 wa = w_att_pct / 100
 wt = wt_pct / 100
 wv = w_var_pct / 100
 
-fig, n_diff, n_total, pct_diff, diff_pts, att_vals, var_vals = build_figure(
-    wa, wt, wv, tim, threshold, var_thresh, w_att_pct, wt_pct, w_var_pct
+att_vals, var_vals, mat_a, mat_b, hover_a, hover_b, diff_pts, n_diff, n_total, pct_diff = compute_matrices(
+    wa, wt, wv, tim, threshold, var_thresh
 )
-st.pyplot(fig)
-plt.close(fig)
+
+fig = build_figure(
+    att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
+    diff_pts, threshold, var_thresh, n_diff, n_total, pct_diff,
+    w_att_pct, wt_pct, w_var_pct, tim
+)
+st.plotly_chart(fig, use_container_width=True)
 
 # Statistics
 st.subheader(f'Статистика расхождений A≠B при своевр={tim}')
