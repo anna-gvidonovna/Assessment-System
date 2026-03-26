@@ -71,8 +71,8 @@ def compute_matrices(wa, wt, wv, tim, threshold, var_thresh):
 
             grade_a = GRADE_LABEL[val_a]
             grade_b = GRADE_LABEL[val_b]
-            row_a.append(f'Посещ: {att} | Вариат: {var}<br>Итог: {s} | Оценка: {grade_a} ({ru})')
-            row_b.append(f'Посещ: {att} | Вариат: {var}<br>Итог: {s} | Оценка: {grade_b} ({ru})')
+            row_a.append(f'a={att}, v={var}<br>S={s} → {grade_a} ({ru})')
+            row_b.append(f'a={att}, v={var}<br>S={s} → {grade_b} ({ru})')
 
             if rule_a(s, threshold) and not rule_b(s, var, threshold, var_thresh):
                 diff_pts['x'].append(var)
@@ -95,8 +95,8 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
     fig = make_subplots(
         rows=1, cols=2,
         subplot_titles=[
-            f'Правило A  (итог ≥ {threshold})   Посещ={w_att_pct}% · Своевр={wt_pct}% · Вариат={w_var_pct}%',
-            f'Правило B  (итог ≥ {threshold}  И  вариат ≥ {var_thresh})   Расхождений: {n_diff}/{n_total} ({pct_diff:.1f}%)',
+            f'Правило A:  S \u2265 \u03b8={threshold}   (\u03b1={w_att_pct}%, \u03b2={wt_pct}%, \u03b3={w_var_pct}%)',
+            f'Правило B:  S \u2265 \u03b8={threshold}  \u2227  v \u2265 v\u2080={var_thresh}   \u2014  расхождений: {n_diff}/{n_total} ({pct_diff:.1f}%)',
         ],
         horizontal_spacing=0.08,
     )
@@ -121,17 +121,15 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
         fig.add_trace(go.Scatter(
             x=diff_pts['x'], y=diff_pts['y'],
             mode='markers',
-            marker=dict(symbol='x', color='#c0392b', size=5, line=dict(width=1.5)),
-            name=f'A≠B ({n_diff} точек)',
-            hovertemplate='Посещ: %{y} | Вариат: %{x}<extra>A≠B</extra>',
+            marker=dict(symbol='circle', color='#c0392b', size=4, opacity=0.45),
+            name=f'A\u2260B ({n_diff})',
+            hovertemplate='a=%{y}, v=%{x}<extra>A\u2260B</extra>',
         ), row=1, col=2)
 
-    # Вертикальная линия порога вариативного
     for col in (1, 2):
         fig.add_vline(x=var_thresh, line_dash='dash', line_color='white',
                       line_width=2, col=col, row=1)
 
-    # Легенда оценок — цветные маркеры
     grade_legend = [
         ('A — 5 Отл (92–100)', COLORS_MAP[5]),
         ('B — 5 Отл (82–91)',  COLORS_MAP[4]),
@@ -148,12 +146,13 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
             name=label, showlegend=True,
         ))
 
-    fig.update_xaxes(title_text='Вариативный балл', range=[0, 100])
-    fig.update_yaxes(title_text='Посещаемость', range=[0, 100])
+    fig.update_xaxes(title_text='v (вариативный)', range=[0, 100])
+    fig.update_yaxes(title_text='a (посещаемость)', range=[0, 100])
     fig.update_layout(
         height=560,
         title=dict(
-            text=f'Своевр={tim}  ·  Веса: посещ={w_att_pct}% своевр={wt_pct}% вариат={w_var_pct}%  ·  Порог зачёта={threshold}',
+            text=(f't={tim}  \u00b7  \u03b1={w_att_pct}%  \u03b2={wt_pct}%  \u03b3={w_var_pct}%'
+                  f'  \u00b7  \u03b8={threshold}'),
             font=dict(size=13),
         ),
         legend=dict(orientation='h', yanchor='top', y=-0.12, xanchor='center', x=0.5),
@@ -165,31 +164,44 @@ def build_figure(att_vals, var_vals, mat_a, mat_b, hover_a, hover_b,
 # ── Streamlit UI ──────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title='Анализ системы оценивания', layout='wide')
-st.title('Анализ системы оценивания: A vs B · Тепловые карты')
+st.title('Анализ системы оценивания: Правило A vs Правило B')
+
+# Формула
+with st.expander('Формула оценки', expanded=True):
+    st.latex(r'S = \alpha \cdot a + \beta \cdot t + \gamma \cdot v')
+    st.latex(
+        r'\text{Правило A}: S \geq \theta'
+        r'\qquad\qquad'
+        r'\text{Правило B}: S \geq \theta \;\wedge\; v \geq v_0'
+    )
+    st.markdown(
+        r'где $a$ — посещаемость, $t$ — своевременность (фиксирована), $v$ — вариативный балл; '
+        r'$\alpha, \beta, \gamma$ — их веса; $\theta$ — порог зачёта; $v_0$ — порог по правилу B.'
+    )
 
 with st.sidebar:
     st.header('Параметры')
 
     tim = st.selectbox(
-        'Своевременность',
+        't (своевременность)',
         options=[100, 50, 0],
-        format_func=lambda v: {100: 'Основной срок (100)', 50: '1-я пересдача (50)', 0: '2-я пересдача (0)'}[v],
+        format_func=lambda v: {100: 't = 100 (основной срок)', 50: 't = 50 (1-я пересдача)', 0: 't = 0 (2-я пересдача)'}[v],
     )
 
-    st.subheader('Веса компонентов')
-    w_att_pct = st.slider('Вес посещаемости (%)', 0, 80, 20, step=5)
-    w_var_pct = st.slider('Вес вариативного (%)', 20, 100, 60, step=5)
+    st.subheader('Веса')
+    w_att_pct = st.slider('α — вес посещаемости (%)', 0, 80, 20, step=5)
+    w_var_pct = st.slider('γ — вес вариативного (%)', 20, 100, 60, step=5)
     wt_pct = 100 - w_att_pct - w_var_pct
 
     if wt_pct < 0:
-        st.error(f'Сумма весов > 100: своевременность = {wt_pct}%. Уменьшите веса.')
+        st.error(f'α + β + γ > 100%: β = {wt_pct}%. Уменьшите веса.')
         st.stop()
     else:
-        st.success(f'Сумма весов: 100%  (посещ={w_att_pct}%, своевр={wt_pct}%, вариат={w_var_pct}%)')
+        st.success(f'α={w_att_pct}%  β={wt_pct}%  γ={w_var_pct}%  (сумма = 100%)')
 
     st.subheader('Пороги')
-    threshold = st.slider('Порог зачёта (≥)', 20, 60, 42, step=1)
-    var_thresh = st.slider('Порог вариативного B (≥)', 10, 60, 42, step=1)
+    threshold = st.slider('θ — порог зачёта (≥)', 20, 60, 42, step=1)
+    var_thresh = st.slider('v₀ — порог правила B (≥)', 10, 60, 42, step=1)
 
 wa = w_att_pct / 100
 wt = wt_pct / 100
@@ -207,14 +219,14 @@ fig = build_figure(
 st.plotly_chart(fig, use_container_width=True)
 
 # Statistics
-st.subheader(f'Статистика расхождений A≠B при своевр={tim}')
+st.subheader(f'Расхождения A \u2260 B при t = {tim}')
 col1, col2, col3 = st.columns(3)
 col1.metric('Расхождений', f'{n_diff}')
 col2.metric('Всего ячеек', f'{n_total}')
-col3.metric('Доля расхождений', f'{pct_diff:.1f}%')
+col3.metric('Доля', f'{pct_diff:.1f}%')
 
 st.caption(
-    f'Смысл: студент проходит по A (итог≥{threshold}), но не по B (вариат<{var_thresh})'
+    f'Студент проходит по A (S \u2265 \u03b8={threshold}), но не по B (v < v\u2080={var_thresh})'
 )
 
 # Per-grade loss
@@ -228,5 +240,5 @@ for i, att in enumerate(att_vals):
 
 losses = {e: cnt for e, cnt in lost_by_grade.items() if cnt > 0}
 if losses:
-    st.write('**Потери по оценкам** (кто получил бы по A, но теряет по B):')
+    st.write('**Потери по оценкам** (проходит по A, теряет по B):')
     st.table({'Оценка ECTS': list(losses.keys()), 'Ячеек': list(losses.values())})
